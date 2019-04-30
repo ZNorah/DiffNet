@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2017-10-26 22:09 zq <zq@mclab>
-#
 # Distributed under terms of the MIT license.
 
 import torch

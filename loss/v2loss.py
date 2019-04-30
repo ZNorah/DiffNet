@@ -34,7 +34,6 @@ class v2loss(nn.Module):
         W = pred.data.size(3)
 
         wh = Variable(torch.from_numpy(np.reshape([W, H], [1, 1, 1, 1, 2]))).float().cuda()
-        #anchor_bias = Variable(self.anchors.view(1, 1, 1, self.num_anchors, 2)).cuda()
         anchor_bias = Variable(self.anchors.view(1, 1, 1, self.num_anchors, 2)).cuda() / wh
         w_list = np.array(list(range(W)), np.float32)
         wh_ids = Variable(torch.from_numpy(np.array(list(map(lambda x: np.array(list(itertools.product(w_list, [x]))), range(H)))).reshape(1, H, W, 1, 2))).float().cuda()
@@ -54,7 +53,6 @@ class v2loss(nn.Module):
 
         adjust_xy = pred[:, :, :, :, 1+self.num_class:1+self.num_class+2].sigmoid()
         adjust_coords = (adjust_xy + wh_ids) / wh
-        #adjust_coords = adjust_xy + wh_ids
         adjust_wh = torch.exp(pred[:, :, :, :, 1+self.num_class+2:1+self.num_class+4]) * anchor_bias
 
         for b in range(BS):
@@ -63,10 +61,6 @@ class v2loss(nn.Module):
                 continue
             gt = Variable(torch.zeros((len(gtb), 4))).cuda()
             for i, anno in enumerate(gtb):
-                #gt[i,0] = anno[0]
-                #gt[i,1] = anno[1]
-                #gt[i,2] = anno[2] * W
-                #gt[i,3] = anno[3] * H
                 gt[i,0] = anno[0] / W
                 gt[i,1] = anno[1] / H
                 gt[i,2] = anno[2]
@@ -76,13 +70,11 @@ class v2loss(nn.Module):
 
             boxes_max_iou = torch.max(bboxes_iou, -1)[0]
             all_obj_mask = boxes_max_iou.le(0.6)
-            #all_obj_loss = all_obj_mask.float() *(self.noobj_scale * (-1 * pred[b, :, :, :, 0]))
             all_obj_loss = all_obj_mask.float() *(self.noobj_scale * (pred[b, :, :, :, 0]))
             #所有iou<0.6的计为noobj，计算noobj loss
 
             all_coords_loss = zero_coords_loss.clone()
             if seen < 12800:
-                #all_coords_loss = 0.01 * torch.cat([(0.5 - adjust_xy[b]), (0 - pred[b, :, :, :, 1+self.num_class+2:1+self.num_class+4])], -1)
                 all_coords_loss = 0.01 * torch.cat([(adjust_xy[b]-0.5), (pred[b, :, :, :, 1+self.num_class+2:1+self.num_class+4]-0)], -1)
                 #训练图片<12800张时，计算框的形状loss
             coord_obj_loss = torch.cat([all_coords_loss, all_obj_loss.unsqueeze(-1)], -1)
@@ -98,13 +90,9 @@ class v2loss(nn.Module):
                 truth_i = truth_box[0] * W
                 w_i = truth_i.int()
                 truth_x = truth_i - w_i.float()
-                #w_i = truth_box[0].int()
-                #truth_x = truth_box[0] - w_i.float()
                 truth_j = truth_box[1] * H
                 h_j = truth_j.int()
                 truth_y = truth_j - h_j.float()
-                #h_j = truth_box[1].int()
-                #truth_y = truth_box[1] - h_j.float()
                 truth_wh = (truth_box[2:] / anchor_bias.contiguous().view(self.num_anchors, 2).index_select(0, anchor_id.long())).log()
                 if (truth_wh[0] == Variable( - torch.cuda.FloatTensor([float('inf')]))).data[0] == 1:
                     pdb.set_trace()
@@ -113,8 +101,6 @@ class v2loss(nn.Module):
                 pred_xy = adjust_xy[b].index_select(0, h_j.long()).index_select(1, w_i.long()).index_select(2, anchor_id.long())[0][0][0]
                 pred_wh = pred_output[1+self.num_class+2:1+self.num_class+4]
                 pred_coords = torch.cat([pred_xy, pred_wh], 0)
-                #coords_loss = self.coord_scale * (truth_coords - pred_coords.unsqueeze(0))
-                #coords_loss = self.coord_scale * (pred_coords.unsqueeze(0) - truth_coords)
                 coords_loss = self.coord_scale * (2 - truth_x.data[0]*truth_y.data[0]) *(pred_coords.unsqueeze(0) - truth_coords)
                 #坐标回归损失，选中的那个anchor的预测结果和真实坐标的损失
                 iou = bboxes_iou.index_select(0, h_j.long()).index_select(1, w_i.long()).index_select(2, anchor_id.long())[0][0][0][truth_iter]
@@ -122,7 +108,6 @@ class v2loss(nn.Module):
                 #print(iou, h_j.data[0], w_i.data[0], label[b, :, h_j.data[0], w_i.data[0]])
 
                 obj_loss = self.obj_scale * (pred_output[0] - iou)
-                #obj_loss = self.obj_scale * (pred_output[0] - 1)
                 #obj loss 选中的anchor的iou loss
                 truth_co_obj = torch.cat([coords_loss, obj_loss.view(1, 1)], 1)
 
